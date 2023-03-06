@@ -141,7 +141,8 @@ function createNodeConfig(isProduction: boolean) {
     },
     output: {
       ...sharedNodeOptions.output,
-      sourcemap: !isProduction,
+      // sourcemap: !isProduction,
+      sourcemap: true,
     },
     external: [
       'fsevents',
@@ -150,7 +151,8 @@ function createNodeConfig(isProduction: boolean) {
     ],
     plugins: createNodePlugins(
       isProduction,
-      !isProduction,
+      true,
+      // !isProduction,
       // in production we use api-extractor for dts generation
       // in development we need to rely on the rollup ts plugin
       isProduction ? false : path.resolve(__dirname, 'dist/node'),
