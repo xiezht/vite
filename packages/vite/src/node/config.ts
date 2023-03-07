@@ -1108,7 +1108,8 @@ async function loadConfigFromBundledFile(
     const defaultLoader = _require.extensions[loaderExt]!
     // 重写了 require[.js] 的方法，在文件名为config文件名时，减少一次 readFile 操作，直接compile
     // defaultLoader默认也是 readFileSync + compile 方法
-    // 算是一个小优化的点？
+    // 算是一个小优化的点？（代理/拦截）
+    // JIT（即时编译），运行时加载TS配置文件，通过拦截原生require 方法实现
     _require.extensions[loaderExt] = (module: NodeModule, filename: string) => {
       if (filename === realFileName) {
         ;(module as NodeModuleWithCompile)._compile(bundledCode, filename)
