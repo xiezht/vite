@@ -4,6 +4,9 @@ import { expand } from 'dotenv-expand'
 import { arraify, lookupFile } from './utils'
 import type { UserConfig } from './config'
 
+/**
+ * 根据当前的mode、环境变量目录设置、默认VITE变量前缀
+ */
 export function loadEnv(
   mode: string,
   envDir: string,
@@ -26,6 +29,7 @@ export function loadEnv(
 
   const parsed = Object.fromEntries(
     envFiles.flatMap((file) => {
+      // 找到环境变量配置文件的完整路径
       const path = lookupFile(envDir, [file], {
         pathOnly: true,
         rootDir: envDir,
@@ -41,6 +45,7 @@ export function loadEnv(
   }
 
   try {
+    // 扩展转化后的环境变量到 process.env 配置
     // let environment variables use each other
     expand({ parsed })
   } catch (e) {
@@ -54,6 +59,7 @@ export function loadEnv(
     throw e
   }
 
+  // 曝光给 client 的环境变量判定
   // only keys that start with prefix are exposed to client
   for (const [key, value] of Object.entries(parsed)) {
     if (prefixes.some((prefix) => key.startsWith(prefix))) {
@@ -61,6 +67,7 @@ export function loadEnv(
     }
   }
 
+  // REVIEW 这里有点奇怪，expend({parsed}) 应该已经把环境变量注入到process.env了，好像会重复定义部分 env[key]
   // check if there are actual env variables starting with VITE_*
   // these are typically provided inline and should be prioritized
   for (const key in process.env) {
@@ -72,6 +79,9 @@ export function loadEnv(
   return env
 }
 
+/**
+ * 接收 UserConfig 对象，提取 envPrefix 参数，数组化（参数可以为数组/字符串）
+ */
 export function resolveEnvPrefix({
   envPrefix = 'VITE_',
 }: UserConfig): string[] {

@@ -407,6 +407,9 @@ interface LookupFileOptions {
   predicate?: (file: string) => boolean
 }
 
+/**
+ * 递归查找文件，formats 参数为文件名称，选项包含查找配置信息
+ */
 export function lookupFile(
   dir: string,
   formats: string[],
@@ -415,6 +418,7 @@ export function lookupFile(
   for (const format of formats) {
     const fullPath = path.join(dir, format)
     if (fs.existsSync(fullPath) && fs.statSync(fullPath).isFile()) {
+      // 是否需要返回文件内容，否则返回文件完整路径即可
       const result = options?.pathOnly
         ? fullPath
         : fs.readFileSync(fullPath, 'utf-8')

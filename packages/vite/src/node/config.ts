@@ -369,6 +369,9 @@ export type ResolveFn = (
   ssr?: boolean,
 ) => Promise<string | undefined>
 
+/**
+ * 解析用户配置，合并默认配置
+ */
 export async function resolveConfig(
   inlineConfig: InlineConfig,
   command: 'build' | 'serve',
@@ -434,6 +437,7 @@ export async function resolveConfig(
     (await asyncFlatten(config.plugins || [])) as Plugin[]
   ).filter(filterPlugin)
 
+  // 解析插件配置
   const [prePlugins, normalPlugins, postPlugins] =
     sortUserPlugins(rawUserPlugins)
 
@@ -466,6 +470,7 @@ export async function resolveConfig(
     { find: /^\/?@vite\/client/, replacement: CLIENT_ENTRY },
   ]
 
+  // 处理 alias 别名配置，加上内置的 alias
   // resolve alias with internal client alias
   const resolvedAlias = normalizeAlias(
     mergeAlias(clientAlias, config.resolve?.alias || []),
@@ -523,6 +528,7 @@ export async function resolveConfig(
 
   const resolvedBuildOptions = resolveBuildOptions(config.build, logger)
 
+  // 预构建缓存目录计算
   // resolve cache directory
   const pkgPath = lookupFile(resolvedRoot, [`package.json`], { pathOnly: true })
   const cacheDir = normalizePath(
@@ -533,12 +539,15 @@ export async function resolveConfig(
       : path.join(resolvedRoot, `.vite`),
   )
 
+  // 根据 assetsInclude 配置生成一个资源过滤函数
   const assetsFilter =
     config.assetsInclude &&
     (!Array.isArray(config.assetsInclude) || config.assetsInclude.length)
       ? createFilter(config.assetsInclude)
       : () => false
 
+  // 核心功能，定义 resolver 生成函数，resolver 函数内部会创建 pluginContainer 并缓存，返回值是模块id？
+  // PluginContainer 应该是 Vite 的一个核心概念，后续看
   // create an internal resolver to be used in special scenarios, e.g.
   // optimizer & handling css @imports
   const createResolver: ResolvedConfig['createResolver'] = (options) => {
@@ -583,6 +592,7 @@ export async function resolveConfig(
     }
   }
 
+  // 解析静态服务资源目录
   const { publicDir } = config
   const resolvedPublicDir =
     publicDir !== false && publicDir !== ''
@@ -605,6 +615,7 @@ export async function resolveConfig(
 
   const BASE_URL = resolvedBase
 
+  // Worker 相关配置获取
   // resolve worker
   let workerConfig = mergeConfig({}, config)
   const [workerPrePlugins, workerNormalPlugins, workerPostPlugins] =
@@ -683,6 +694,7 @@ export async function resolveConfig(
     ...resolvedConfig,
   }
 
+  // 生成插件流水线
   ;(resolved.plugins as Plugin[]) = await resolvePlugins(
     resolved,
     prePlugins,
@@ -859,6 +871,9 @@ export function sortUserPlugins(
   return [prePlugins, normalPlugins, postPlugins]
 }
 
+/**
+ * 识别文件类型（JS/TS）、模块格式（CJS/ESM），使用合适的方式加载文件
+ */
 export async function loadConfigFromFile(
   configEnv: ConfigEnv,
   configFile?: string,
@@ -908,6 +923,7 @@ export async function loadConfigFromFile(
   }
 
   try {
+    // 打包配置文件？
     const bundled = await bundleConfigFile(resolvedPath, isESM)
     const userConfig = await loadConfigFromBundledFile(
       resolvedPath,
@@ -1049,6 +1065,16 @@ interface NodeModuleWithCompile extends NodeModule {
 }
 
 const _require = createRequire(import.meta.url)
+
+/**
+ * 概念：
+ *    AOT（Ahead of Time）：编译配置 -> 临时产物 -> 加载临时产物
+ *    JIT，
+ * 函数实现：
+ * 加载bundle处理（ts -> js）之后的临时 config 文件
+ * ESM -> new Function('file', 'return import(file)')：原生import方法，避免打包工具处理这段代码（类似eval），时间戳query参数读取最新配置
+ * CJS ->
+ */
 async function loadConfigFromBundledFile(
   fileName: string,
   bundledCode: string,
@@ -1063,6 +1089,7 @@ async function loadConfigFromBundledFile(
     const fileUrl = `${pathToFileURL(fileBase)}.mjs`
     fs.writeFileSync(fileNameTmp, bundledCode)
     try {
+      // 如果是ESM模块，使用 Node 原生的 ESM Import 读取内容
       return (await dynamicImport(fileUrl)).default
     } finally {
       try {
@@ -1072,6 +1099,7 @@ async function loadConfigFromBundledFile(
       }
     }
   }
+  // 原生 require 方法加载 cjs 文件（实际上是 fs.readFileSync + module.complile 函数）
   // for cjs, we can register a custom loader via `_require.extensions`
   else {
     const extension = path.extname(fileName)
