@@ -1106,6 +1106,9 @@ async function loadConfigFromBundledFile(
     const realFileName = fs.realpathSync(fileName)
     const loaderExt = extension in _require.extensions ? extension : '.js'
     const defaultLoader = _require.extensions[loaderExt]!
+    // 重写了 require[.js] 的方法，在文件名为config文件名时，减少一次 readFile 操作，直接compile
+    // defaultLoader默认也是 readFileSync + compile 方法
+    // 算是一个小优化的点？
     _require.extensions[loaderExt] = (module: NodeModule, filename: string) => {
       if (filename === realFileName) {
         ;(module as NodeModuleWithCompile)._compile(bundledCode, filename)
