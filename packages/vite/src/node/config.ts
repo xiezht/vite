@@ -1069,11 +1069,11 @@ const _require = createRequire(import.meta.url)
 /**
  * 概念：
  *    AOT（Ahead of Time）：编译配置 -> 临时产物 -> 加载临时产物
- *    JIT，
+ *    JIT（即时编译）：需要运行时再进行编译操作？不预先编译成临时产物（类似于编译成机器码）
  * 函数实现：
  * 加载bundle处理（ts -> js）之后的临时 config 文件
  * ESM -> new Function('file', 'return import(file)')：原生import方法，避免打包工具处理这段代码（类似eval），时间戳query参数读取最新配置
- * CJS ->
+ * CJS -> 拦截原生 _require[.js] 的方法
  */
 async function loadConfigFromBundledFile(
   fileName: string,
