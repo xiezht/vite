@@ -108,6 +108,7 @@ export async function scanImports(config: ResolvedConfig): Promise<{
 
   await build({
     absWorkingDir: process.cwd(),
+    // NOTE 不进行磁盘IO
     write: false,
     stdin: {
       contents: entries.map((e) => `import ${JSON.stringify(e)}`).join('\n'),

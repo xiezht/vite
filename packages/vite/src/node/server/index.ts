@@ -622,6 +622,7 @@ export async function createServer(
     initingServer = (async function () {
       await container.buildStart({})
       if (isDepsOptimizerEnabled(config, false)) {
+        // REVIEW 这里是依赖预构建的入口？
         // non-ssr
         await initDepsOptimizer(config, server)
       }

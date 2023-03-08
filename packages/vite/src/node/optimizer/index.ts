@@ -217,6 +217,7 @@ export interface DepOptimizationMetadata {
 }
 
 /**
+ * vite optimize命令执行，手动进行依赖预构建的入口函数
  * Scan and optimize dependencies within a project.
  * Used by Vite CLI when running `vite optimize`.
  */
@@ -229,6 +230,7 @@ export async function optimizeDeps(
 
   const ssr = config.command === 'build' && !!config.build.ssr
 
+  // 根据配置内容&lock文件的内容，验证hash是否与metadata.json记录的hash一致
   const cachedMetadata = loadCachedDepOptimizationMetadata(
     config,
     ssr,
@@ -238,7 +240,8 @@ export async function optimizeDeps(
   if (cachedMetadata) {
     return cachedMetadata
   }
-
+  // 缓存未命中，进入依赖预构建流程
+  // 扫描项目依赖（但不进行磁盘写入）
   const deps = await discoverProjectDependencies(config)
 
   const depsString = depsLogString(Object.keys(deps))
@@ -333,6 +336,7 @@ export function addOptimizedDepInfo(
 }
 
 /**
+ * 加载之前的依赖优化结果
  * Creates the initial dep optimization metadata, loading it from the deps cache
  * if it exists and pre-bundling isn't forced
  */
@@ -361,6 +365,7 @@ export function loadCachedDepOptimizationMetadata(
         depsCacheDir,
       )
     } catch (e) {}
+    // 对比缓存中记录的 hash 以及当前config的hash计算结果
     // hash is consistent, no need to re-bundle
     if (cachedMetadata && cachedMetadata.hash === getDepHash(config, ssr)) {
       log('Hash is consistent. Skipping. Use --force to override.')
@@ -1049,6 +1054,10 @@ const lockfileFormats = [
   { name: 'bun.lockb', checkPatches: true },
 ]
 
+/**
+ * 所有涉及到可能影响预构建变化的配置、文件，都用来计算hash值
+ * e.g. lockfile、mode、optimezeDeps选项、插件配置、资源包含等等
+ */
 export function getDepHash(config: ResolvedConfig, ssr: boolean): string {
   const lockfilePath = lookupFile(
     config.root,
