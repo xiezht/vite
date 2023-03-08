@@ -246,7 +246,7 @@ export async function optimizeDeps(
 
   const depsString = depsLogString(Object.keys(deps))
   log(colors.green(`Optimizing dependencies:\n  ${depsString}`))
-
+  // REVIEW 这个函数实际作用？
   await addManuallyIncludedOptimizeDeps(deps, config, ssr)
 
   const depsInfo = toDiscoveredDependencies(config, deps, ssr)
@@ -302,6 +302,7 @@ export async function optimizeServerSsrDeps(
 
   const depsInfo = toDiscoveredDependencies(config, deps, true)
 
+  // runOptimizeDeps函数内部将预构建结果写入了metadata.json
   const result = await runOptimizeDeps(config, depsInfo, true)
 
   await result.commit()
@@ -672,6 +673,7 @@ export async function runOptimizeDeps(
     }
   }
 
+  // 写入文件
   const dataPath = path.join(processingCacheDir, '_metadata.json')
   writeFile(dataPath, stringifyDepsOptimizerMetadata(metadata, depsCacheDir))
 
@@ -698,6 +700,7 @@ export async function addManuallyIncludedOptimizeDeps(
 ): Promise<void> {
   const { logger } = config
   const optimizeDeps = getDepOptimizationConfig(config, ssr)
+  // 用户自定定义的依赖优化配置选项？
   const optimizeDepsInclude = optimizeDeps?.include ?? []
   if (optimizeDepsInclude.length || extra.length) {
     const unableToOptimize = (id: string, msg: string) => {

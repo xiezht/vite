@@ -101,6 +101,7 @@ export async function scanImports(config: ResolvedConfig): Promise<{
   const deps: Record<string, string> = {}
   const missing: Record<string, string> = {}
   const container = await createPluginContainer(config)
+  // 这里专门定义了一个 scan 插件，用于预构建的build函数，将扫描结果保存到deps、missing这两个对象中
   const plugin = esbuildScanPlugin(config, container, deps, missing, entries)
 
   const { plugins = [], ...esbuildOptions } =
@@ -162,6 +163,9 @@ const typeRE = /\btype\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s'">]+))/i
 const langRE = /\blang\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s'">]+))/i
 const contextRE = /\bcontext\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s'">]+))/i
 
+/**
+ * 闭包函数？返回一个对象（vite plugin 实例）
+ */
 function esbuildScanPlugin(
   config: ResolvedConfig,
   container: PluginContainer,
