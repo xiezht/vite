@@ -568,7 +568,13 @@ export async function createPluginContainer(
       )
     },
 
+    /**
+     * PluginContainer.resolveId
+     * vite默认的pre-alias、alias、preload-polyfill等插件，以及用户定义的包含 resolveId hook的插件，都有可能会影响一个路径的解析。
+     * 这里做了一个集中处理
+     */
     async resolveId(rawId, importer = join(root, 'index.html'), options) {
+      // REVIEW 看一下这里 rawId 字段
       const skip = options?.skip
       const ssr = options?.ssr
       const scan = !!options?.scan
@@ -580,6 +586,7 @@ export async function createPluginContainer(
 
       let id: string | null = null
       const partial: Partial<PartialResolvedId> = {}
+      // 获取包含 resolveId hook 的插件
       for (const plugin of getSortedPlugins('resolveId')) {
         if (!plugin.resolveId) continue
         if (skip?.has(plugin)) continue
@@ -587,6 +594,7 @@ export async function createPluginContainer(
         ctx._activePlugin = plugin
 
         const pluginResolveStart = isDebug ? performance.now() : 0
+        // 调用插件 plugin.resolveId.handler 处理
         const handler =
           'handler' in plugin.resolveId
             ? plugin.resolveId.handler
@@ -632,6 +640,7 @@ export async function createPluginContainer(
       }
 
       if (id) {
+        // 标准化id（外部http url、按win/unix系统标准化路径）
         partial.id = isExternalUrl(id) ? id : normalizePath(id)
         return partial as PartialResolvedId
       } else {

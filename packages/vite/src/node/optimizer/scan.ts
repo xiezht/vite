@@ -74,15 +74,18 @@ export async function scanImports(config: ResolvedConfig): Promise<{
       throw new Error('invalid rollupOptions.input value.')
     }
   } else {
+    // 没有定义构建入口时，使用项目目录下的 html 文件作为入口
     entries = await globEntries('**/*.html', config)
   }
 
+  // 判定入口是否为 /\.(?:j|t)sx?$|\.mjs$/ 或类 html 模板类型
   // Non-supported entry file types and virtual files should not be scanned for
   // dependencies.
   entries = entries.filter(
     (entry) => isScannable(entry) && fs.existsSync(entry),
   )
 
+  // 没有入口
   if (!entries.length) {
     if (!explicitEntryPatterns && !config.optimizeDeps.include) {
       config.logger.warn(
@@ -112,12 +115,14 @@ export async function scanImports(config: ResolvedConfig): Promise<{
     // NOTE 不进行磁盘IO
     write: false,
     stdin: {
+      // 把所有的 entry 都用标准输入stdin + import 语句表示
       contents: entries.map((e) => `import ${JSON.stringify(e)}`).join('\n'),
       loader: 'js',
     },
     bundle: true,
     format: 'esm',
     logLevel: 'error',
+    // 注入scan插件
     plugins: [...plugins, plugin],
     ...esbuildOptions,
   })
@@ -204,6 +209,7 @@ function esbuildScanPlugin(
     '@vite/env',
   ]
 
+  // 非 entry 时直接标记为 external: true，阻止esbuild继续处理
   const externalUnlessEntry = ({ path }: { path: string }) => ({
     path,
     external: !entries.includes(path),
@@ -236,6 +242,7 @@ function esbuildScanPlugin(
   return {
     name: 'vite:dep-scan',
     setup(build) {
+      // REVIEW 这里的 scripts 记录作用在哪？
       const scripts: Record<string, OnLoadResult> = {}
 
       // external urls
@@ -280,7 +287,8 @@ function esbuildScanPlugin(
           namespace: 'html',
         }
       })
-
+      // htmlTypesRE: /\.(html|vue|svelte|astro|imba)$/
+      // 注意：.vue 文件也会进入这个 hook
       // extract scripts inside HTML-like files and treat it as a js module
       build.onLoad(
         { filter: htmlTypesRE, namespace: 'html' },
@@ -382,14 +390,14 @@ function esbuildScanPlugin(
           if (!path.endsWith('.vue') || !js.includes('export default')) {
             js += '\nexport default {}'
           }
-
+          // 可以在这里打断点，看到 html 入口类型文件编译成功之后的js内容
           return {
             loader: 'js',
             contents: js,
           }
         },
       )
-
+      // 直接引入依赖时如何解析
       // bare imports: record and externalize ----------------------------------
       build.onResolve(
         {
@@ -412,13 +420,17 @@ function esbuildScanPlugin(
             if (shouldExternalizeDep(resolved, id)) {
               return externalUnlessEntry({ path: id })
             }
+            // 为 node_modules 模块 || 在 include 字段时，记录到优化列表
             if (resolved.includes('node_modules') || include?.includes(id)) {
               // dependency or forced included, externalize and stop crawling
               if (isOptimizable(resolved, config.optimizeDeps)) {
                 depImports[id] = resolved
               }
+              // 某个依赖被标记为可优化之后，非 entry 则标记为 external，阻止esbuild继续处理
               return externalUnlessEntry({ path: id })
             } else if (isScannable(resolved)) {
+              // js类型、类html类型的文件，为scannable
+              // 类html类型增加namespace
               const namespace = htmlTypesRE.test(resolved) ? 'html' : undefined
               // linked package, keep crawling
               return {
@@ -426,9 +438,11 @@ function esbuildScanPlugin(
                 namespace,
               }
             } else {
+              // 非 nodes_modules/*.[c|m]jsx?，非 include，非 [c|m]jsx?|tsx?，非类html，标记为external
               return externalUnlessEntry({ path: id })
             }
           } else {
+            // 无法解析该模块路径
             missing[id] = normalizePath(importer)
           }
         },
@@ -545,6 +559,12 @@ function extractImportPaths(code: string) {
   return js
 }
 
+/**
+ * external: true 的判定
+ * 1. 解析后不是一个绝对路径
+ * 2. rollup插件约定虚拟模块：\0开头
+ * 3. import路径本身就是一个绝对路径的时候（why？）
+ */
 function shouldExternalizeDep(resolvedId: string, rawId: string): boolean {
   // not a valid file path
   if (!path.isAbsolute(resolvedId)) {
