@@ -449,6 +449,7 @@ export function depsLogString(qualifiedIds: string[]): string {
 }
 
 /**
+ * Vite 启动时，不需要等待依赖预构建完成？
  * Internally, Vite uses this function to prepare a optimizeDeps run. When Vite starts, we can get
  * the metadata and start the server without waiting for the optimizeDeps processing to be completed
  */
@@ -465,6 +466,7 @@ export async function runOptimizeDeps(
   }
 
   const depsCacheDir = getDepsCacheDir(resolvedConfig, ssr)
+  // 处理中的缓存目录
   const processingCacheDir = getProcessingDepsCacheDir(resolvedConfig, ssr)
 
   // Create a temporal directory so we don't need to delete optimized deps
@@ -483,6 +485,7 @@ export async function runOptimizeDeps(
     JSON.stringify({ type: 'module' }),
   )
 
+  // 定义meta数据的空数据结构
   const metadata = initDepsOptimizerMetadata(config, ssr)
 
   metadata.browserHash = getOptimizedBrowserHash(
@@ -490,12 +493,15 @@ export async function runOptimizeDeps(
     depsFromOptimizedDepInfo(depsInfo),
   )
 
+  // 预打包依赖不需要等待。需要访问缓存依赖的代码，对每一个以来，需要 await optimizedDepInfo.processing()
   // We prebundle dependencies with esbuild and cache them, but there is no need
   // to wait here. Code that needs to access the cached deps needs to await
   // the optimizedDepInfo.processing promise for each dep
 
+  // 这里传进来的depInfo，是经过 scanImports 扫描得到的依赖Map
   const qualifiedIds = Object.keys(depsInfo)
 
+  // 处理结果及操作函数集合
   const processingResult: DepOptimizationResult = {
     metadata,
     async commit() {
@@ -524,13 +530,16 @@ export async function runOptimizeDeps(
   const idToExports: Record<string, ExportsData> = {}
   const flatIdToExports: Record<string, ExportsData> = {}
 
+  // 计算依赖优化的配置策略
   const optimizeDeps = getDepOptimizationConfig(config, ssr)
 
   const { plugins: pluginsFromConfig = [], ...esbuildOptions } =
     optimizeDeps?.esbuildOptions ?? {}
 
   for (const id in depsInfo) {
+    // src 是最初的源代码路径，depInfo[id].file 是预构建完成后的路径（临时，e.g. .vite/deps_build-dist/vue.js）
     const src = depsInfo[id].src!
+    // 获取依赖文件经过分析后得到的 exports/imports
     const exportsData = await (depsInfo[id].exportsData ??
       extractExportsData(src, config, ssr))
     if (exportsData.jsxLoader) {
@@ -541,6 +550,7 @@ export async function runOptimizeDeps(
         ...esbuildOptions.loader,
       }
     }
+    // 扁平化路径
     const flatId = flattenId(id)
     flatIdDeps[flatId] = src
     idToExports[id] = exportsData
@@ -562,6 +572,7 @@ export async function runOptimizeDeps(
 
   const external = [...(optimizeDeps?.exclude ?? [])]
 
+  // 如果是 build 的话（使用rollup），需要把rollupOptions配置项的external合并到 externals
   if (isBuild) {
     let rollupOptionsExternal = config?.build?.rollupOptions?.external
     if (rollupOptionsExternal) {
@@ -584,12 +595,15 @@ export async function runOptimizeDeps(
 
   const plugins = [...pluginsFromConfig]
   if (external.length) {
+    // 这个插件似乎针对 external cjs 文件，对其 require 语句做了一次 modules.exports 转换？
     plugins.push(esbuildCjsExternalPlugin(external, platform))
   }
+  // flatIdDeps: { flatId: src }
   plugins.push(esbuildDepPlugin(flatIdDeps, external, config, ssr))
 
   const start = performance.now()
 
+  // scanImports 里执行了一次 Build，这里也执行了一次
   const result = await build({
     absWorkingDir: process.cwd(),
     entryPoints: Object.keys(flatIdDeps),
@@ -939,11 +953,15 @@ function esbuildOutputFromId(
   }
 }
 
+/**
+ * 使用 es-module-lexer 提取 exports 语句？
+ */
 export async function extractExportsData(
   filePath: string,
   config: ResolvedConfig,
   ssr: boolean,
 ): Promise<ExportsData> {
+  // 等待 es-module-lexer 初始化完成
   await init
 
   const optimizeDeps = getDepOptimizationConfig(config, ssr)
@@ -959,6 +977,7 @@ export async function extractExportsData(
       write: false,
       format: 'esm',
     })
+    // 调用 es-module-lexer 解析代码 import、export 语句？
     const [imports, exports, facade] = parse(result.outputFiles[0].text)
     return {
       hasImports: imports.length > 0,

@@ -44,6 +44,9 @@ const externalTypes = [
   ...KNOWN_ASSET_TYPES,
 ]
 
+/**
+ * 看起来是在依赖打包阶段比较重要的一个插件。。略感复杂
+ */
 export function esbuildDepPlugin(
   qualified: Record<string, string>,
   external: string[],
@@ -83,6 +86,7 @@ export function esbuildDepPlugin(
       _importer = importer in qualified ? qualified[importer] : importer
     }
     const resolver = kind.startsWith('require') ? _resolveRequire : _resolve
+    // 计算模块的id
     return resolver(id, _importer, undefined, ssr)
   }
 
@@ -149,6 +153,7 @@ export function esbuildDepPlugin(
           }
         },
       )
+      // load到 external 模块时，使用 vite-dep-pre-bundle-external:path 作为路径，重新exports，覆盖原有内容
       build.onLoad(
         { filter: /./, namespace: externalWithConversionNamespace },
         (args) => {

@@ -74,6 +74,9 @@ export function unwrapId(id: string): string {
     : id
 }
 
+/**
+ * 替换/:为 _，点字符.为 __，空白字符为 ___
+ */
 export const flattenId = (id: string): string =>
   id
     .replace(/[/:]/g, '_')
