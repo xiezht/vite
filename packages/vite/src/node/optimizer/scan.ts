@@ -242,10 +242,10 @@ function esbuildScanPlugin(
   return {
     name: 'vite:dep-scan',
     setup(build) {
-      // REVIEW 这里的 scripts 记录作用在哪？
+      // scripts，记录类 html 文件解析出来的 script 信息
       const scripts: Record<string, OnLoadResult> = {}
 
-      // external urls
+      // external urls（标记为 external 的模块，不会被 onLoad 钩子的回调函数处理，不会被包含在bundle内，运行时引入）
       build.onResolve({ filter: externalRE }, ({ path }) => ({
         path,
         external: true,
@@ -257,6 +257,7 @@ function esbuildScanPlugin(
         external: true,
       }))
 
+      // 这里的 virtualModule，似乎与 Vue 的单文件组件有关（script部分）
       // local scripts (`<script>` in Svelte and `<script setup>` in Vue)
       build.onResolve({ filter: virtualModuleRE }, ({ path }) => {
         return {
@@ -267,11 +268,15 @@ function esbuildScanPlugin(
       })
 
       build.onLoad({ filter: /.*/, namespace: 'script' }, ({ path }) => {
+        // REVIEW 这里是怎么处理的？返回 filter: htmlTypesRE 的 onLoad 函数处理时缓存的结果
+        // {loader, contents, pluginData: {htmlType: loader} }
+        // pluginData.htmlType 似乎后面有用到了
         return scripts[path]
       })
 
       // html types: extract script contents -----------------------------------
       build.onResolve({ filter: htmlTypesRE }, async ({ path, importer }) => {
+        // 调用 container.resolveId（内部执行了所有插件的 revolveId 的 handler，比如 alias 等内置插件）
         const resolved = await resolve(path, importer)
         if (!resolved) return
         // It is possible for the scanner to scan html types in node_modules.
@@ -302,6 +307,7 @@ function esbuildScanPlugin(
           let js = ''
           let scriptId = 0
           let match: RegExpExecArray | null
+          // 不断尝试匹配文件内容的 script 标签
           while ((match = regex.exec(raw))) {
             const [, openTag, content] = match
             const typeMatch = openTag.match(typeRE)
@@ -332,6 +338,7 @@ function esbuildScanPlugin(
               const src = srcMatch[1] || srcMatch[2] || srcMatch[3]
               js += `import ${JSON.stringify(src)}\n`
             } else if (content.trim()) {
+              // REVIEW 需要使用虚拟模块的原因：1. Vue文件中存在模块脚本；2. 多个脚本之间需要独立处理，避免变量名重复使用
               // The reason why virtual modules are needed:
               // 1. There can be module scripts (`<script context="module">` in Svelte and `<script>` in Vue)
               // or local scripts (`<script>` in Svelte and `<script setup>` in Vue)
@@ -340,14 +347,19 @@ function esbuildScanPlugin(
 
               // append imports in TS to prevent esbuild from removing them
               // since they may be used in the template
+              // 这里用正则表达式提取了script 内的 import 语句（es-moduler-lexer无法处理ts，ACorn太慢，而且这里的处理不需要 Bullet proof）
+              // 对 ts 类型的script 内容追加import 语句，强制 esbuild 进一步处理依赖
               const contents =
                 content +
                 (loader.startsWith('ts') ? extractImportPaths(content) : '')
 
               const key = `${path}?id=${scriptId++}`
               if (contents.includes('import.meta.glob')) {
+                // REVIEW 为什么有import.meta.glob 就改用 js loader？
+                // 缓存该script的解析结果
                 scripts[key] = {
                   loader: 'js', // since it is transpiled
+                  // 因为 doTransformGlobImport 先使用 esbuild.transform 把代码编译为 js 了，然后再处理了 import.meta.glob）
                   contents: await doTransformGlobImport(contents, path, loader),
                   pluginData: {
                     htmlType: { loader },
@@ -371,7 +383,8 @@ function esbuildScanPlugin(
               const context =
                 contextMatch &&
                 (contextMatch[1] || contextMatch[2] || contextMatch[3])
-
+              // NOTE 对于 vue 文件等的 script，加载时，将文件内容转换为虚拟模块路径的全量导出语句（export * from vitrualModulePath）
+              // svelte的非module script 的 exports有特殊意义？
               // Especially for Svelte files, exports in <script context="module"> means module exports,
               // exports in <script> means component props. To avoid having two same export name from the
               // star exports, we need to ignore exports in <script>
@@ -390,7 +403,9 @@ function esbuildScanPlugin(
           if (!path.endsWith('.vue') || !js.includes('export default')) {
             js += '\nexport default {}'
           }
-          // 可以在这里打断点，看到 html 入口类型文件编译成功之后的js内容
+          // 可以在这里打断点，看到 html 入口类型文件编译成功之后的js内容。之后的content再由esbuild进入新一轮处理？
+          // 虚拟模块的import语句又会回到 build.onResolve({ filter: virtualModuleRE }) 这个钩子函数处理
+          // 作用：缓存解析结果，避免重复解析？
           return {
             loader: 'js',
             contents: js,
@@ -405,9 +420,11 @@ function esbuildScanPlugin(
           filter: /^[\w@][^:]/,
         },
         async ({ path: id, importer, pluginData }) => {
+          // exclude配置的路径及其子级文件，设为 external
           if (moduleListContains(exclude, id)) {
             return externalUnlessEntry({ path: id })
           }
+          // 已经解析过了？
           if (depImports[id]) {
             return externalUnlessEntry({ path: id })
           }
@@ -417,6 +434,7 @@ function esbuildScanPlugin(
             },
           })
           if (resolved) {
+            // REVIEW 排除非绝对路径 或者 \0 开头的虚拟id（作用是什么？）
             if (shouldExternalizeDep(resolved, id)) {
               return externalUnlessEntry({ path: id })
             }
@@ -435,7 +453,7 @@ function esbuildScanPlugin(
               // linked package, keep crawling
               return {
                 path: path.resolve(resolved),
-                namespace,
+                namespace, // html 类型又会进入 html 类型的 onLoad 处理函数，解析script
               }
             } else {
               // 非 nodes_modules/*.[c|m]jsx?，非 include，非 [c|m]jsx?|tsx?，非类html，标记为external
@@ -505,6 +523,7 @@ function esbuildScanPlugin(
         },
       )
 
+      // 对jsx/tsx的引入，只要特殊处理包含 import.meta.glob 的文件，剩下的可以交由 esbuild 处理imports关系
       // for jsx/tsx, we need to access the content and check for
       // presence of import.meta.glob, since it results in import relationships
       // but isn't crawled by esbuild.
@@ -538,6 +557,7 @@ function esbuildScanPlugin(
 }
 
 /**
+ * 使用ts 时，esbuild会忽略 script 模块内部的import语句？不做进一步的依赖获取？
  * when using TS + (Vue + `<script setup>`) or Svelte, imports may seem
  * unused to esbuild and dropped in the build output, which prevents
  * esbuild from crawling further.
