@@ -608,7 +608,7 @@ export async function runOptimizeDeps(
 
   const plugins = [...pluginsFromConfig]
   if (external.length) {
-    // 这个插件似乎针对 external cjs 文件，对其 require 语句做了一次 modules.exports 转换？
+    // 这个插件似乎针对 external cjs 文件，对其 require 语句做了一次 modules.exports 转换？避免esm打包后的文件出现require语句
     plugins.push(esbuildCjsExternalPlugin(external, platform))
   }
   // flatIdDeps: { flatId: src }
