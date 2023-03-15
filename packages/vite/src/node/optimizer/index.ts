@@ -240,13 +240,13 @@ export async function optimizeDeps(
   if (cachedMetadata) {
     return cachedMetadata
   }
-  // 缓存未命中，进入依赖预构建流程
+  // 缓存未命中，进入依赖预构建流程，看起来只记录了node_modules的依赖（通过bare_import引入）
   // 扫描项目依赖（但不进行磁盘写入）
   const deps = await discoverProjectDependencies(config)
 
   const depsString = depsLogString(Object.keys(deps))
   log(colors.green(`Optimizing dependencies:\n  ${depsString}`))
-  // REVIEW 这个函数实际作用？
+  // 手动include的依赖，需要resolve对应的id
   await addManuallyIncludedOptimizeDeps(deps, config, ssr)
 
   const depsInfo = toDiscoveredDependencies(config, deps, ssr)
@@ -424,9 +424,11 @@ export function toDiscoveredDependencies(
     const src = deps[id]
     discovered[id] = {
       id,
+      // 优化后的文件路径名（缓存目录+扁平化路径+.js）
       file: getOptimizedDepPath(id, config, ssr),
       src,
       browserHash: browserHash,
+      // es-moduler-lexer 处理（内部可能有 build/transform 步骤），提取exports信息
       exportsData: extractExportsData(src, config, ssr),
     }
   }
@@ -448,6 +450,17 @@ export function depsLogString(qualifiedIds: string[]): string {
   }
 }
 
+/**
+ * Chat GPT问答：
+ * Vite 源码中的 runOptimizeDeps 方法主要是用于分析和优化项目中的依赖关系，它的作用有以下几个方面：
+  分析依赖关系
+  runOptimizeDeps 方法会遍历项目中的所有模块，分析它们之间的依赖关系，并建立依赖图谱。在分析过程中，会忽略掉一些不需要优化的依赖，例如 Node.js 内置模块和第三方库等。
+  优化依赖关系
+  在分析完依赖关系之后，runOptimizeDeps 方法会尝试对依赖关系进行优化，以减小项目的打包体积。具体来说，它会尝试移除一些未被使用的模块和代码，删除一些无用的依赖关系，并将一些常用的模块合并到一个文件中，以减少文件的数量和大小。
+  更新依赖图谱
+  在优化依赖关系之后，runOptimizeDeps 方法会更新依赖图谱，并将优化后的依赖关系保存到内存中。这样，在后续的开发和构建过程中，Vite 就可以利用这个优化后的依赖图谱，以提高模块的加载速度和应用的性能。
+  综上所述，runOptimizeDeps 方法是 Vite 中非常重要的一部分，它通过分析和优化依赖关系，可以大幅度减小项目的打包体积，提高应用的性能和加载速度。
+ */
 /**
  * Vite 启动时，不需要等待依赖预构建完成？
  * Internally, Vite uses this function to prepare a optimizeDeps run. When Vite starts, we can get
@@ -537,7 +550,7 @@ export async function runOptimizeDeps(
     optimizeDeps?.esbuildOptions ?? {}
 
   for (const id in depsInfo) {
-    // src 是最初的源代码路径，depInfo[id].file 是预构建完成后的路径（临时，e.g. .vite/deps_build-dist/vue.js）
+    // src 是依赖的绝对路径，depInfo[id].file 是预构建完成后的路径（临时，e.g. .vite/deps_build-dist/vue.js）
     const src = depsInfo[id].src!
     // 获取依赖文件经过分析后得到的 exports/imports
     const exportsData = await (depsInfo[id].exportsData ??

@@ -115,7 +115,7 @@ export async function scanImports(config: ResolvedConfig): Promise<{
     // NOTE 不进行磁盘IO
     write: false,
     stdin: {
-      // 把所有的 entry 都用标准输入stdin + import 语句表示
+      // NOTE 这里把所有的 entry 都用标准输入stdin + import 语句表示
       contents: entries.map((e) => `import ${JSON.stringify(e)}`).join('\n'),
       loader: 'js',
     },
@@ -239,6 +239,7 @@ function esbuildScanPlugin(
     return result?.s.toString() || transpiledContents
   }
 
+  // 其实这里只有三个 onLoad 函数，一个处理类html、一个处理类js、一个处理namesapce="script"
   return {
     name: 'vite:dep-scan',
     setup(build) {
@@ -356,10 +357,10 @@ function esbuildScanPlugin(
               const key = `${path}?id=${scriptId++}`
               if (contents.includes('import.meta.glob')) {
                 // REVIEW 为什么有import.meta.glob 就改用 js loader？
+                // 因为 doTransformGlobImport 先使用 esbuild.transform 把代码编译为 js 了，然后再处理了 import.meta.glob）
                 // 缓存该script的解析结果
                 scripts[key] = {
                   loader: 'js', // since it is transpiled
-                  // 因为 doTransformGlobImport 先使用 esbuild.transform 把代码编译为 js 了，然后再处理了 import.meta.glob）
                   contents: await doTransformGlobImport(contents, path, loader),
                   pluginData: {
                     htmlType: { loader },
@@ -412,7 +413,7 @@ function esbuildScanPlugin(
           }
         },
       )
-      // 直接引入依赖时如何解析
+      // 直接引入依赖时如何解析（@vue、react、lodash-es 这样的非绝对路径、非相对路径，或者 alias配置过的路径等等）
       // bare imports: record and externalize ----------------------------------
       build.onResolve(
         {
@@ -493,7 +494,7 @@ function esbuildScanPlugin(
       }))
 
       // catch all -------------------------------------------------------------
-
+      // 比如 import some './hello.js' 这种正常的引入方式
       build.onResolve(
         {
           filter: /.*/,
@@ -506,6 +507,8 @@ function esbuildScanPlugin(
             },
           })
           if (resolved) {
+            // 非绝对路径、rollup约定\0开头的虚拟模块、resolved === id（why）|| (非类js、html)
+            // 是因为只优化 node_modules 下的依赖的原因吗？
             if (shouldExternalizeDep(resolved, id) || !isScannable(resolved)) {
               return externalUnlessEntry({ path: id })
             }
@@ -513,6 +516,7 @@ function esbuildScanPlugin(
             const namespace = htmlTypesRE.test(resolved) ? 'html' : undefined
 
             return {
+              // 清除了URL中的query和hash参数（正常继续往下走打包流程就可以了）
               path: path.resolve(cleanUrl(resolved)),
               namespace,
             }
@@ -523,7 +527,7 @@ function esbuildScanPlugin(
         },
       )
 
-      // 对jsx/tsx的引入，只要特殊处理包含 import.meta.glob 的文件，剩下的可以交由 esbuild 处理imports关系
+      // 对jsx/tsx的引入，只要特殊处理包含 import.meta.glob 的文件，剩下的读取完文件内容，可以交由 esbuild 处理imports关系
       // for jsx/tsx, we need to access the content and check for
       // presence of import.meta.glob, since it results in import relationships
       // but isn't crawled by esbuild.

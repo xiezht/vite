@@ -277,6 +277,7 @@ export function esbuildCjsExternalPlugin(
   return {
     name: 'cjs-external',
     setup(build) {
+      // 转义特殊字符，用于生成正则表达式（因为在字符串\是转义符号，所以要使用 \\ + RegExp 构成正则）
       const escape = (text: string) =>
         `^${text.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')}$`
       const filter = new RegExp(externals.map(escape).join('|'))
@@ -303,6 +304,8 @@ export function esbuildCjsExternalPlugin(
         }
       })
 
+      // 改变了非node环境下require调用的内容，重新 import，进入该插件的第1个 onResolve 函数，最后应该也是 external 了？
+      // 作用应该是避免打包esm格式文件后，多了 require 语句？改为 import 语句
       build.onLoad(
         { filter: /.*/, namespace: cjsExternalFacadeNamespace },
         (args) => ({
