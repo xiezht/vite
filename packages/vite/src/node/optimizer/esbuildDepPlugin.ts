@@ -158,6 +158,7 @@ export function esbuildDepPlugin(
         { filter: /./, namespace: externalWithConversionNamespace },
         (args) => {
           // import itself with prefix (this is the actual part of require-import conversion)
+          // 这里替换掉require语句之后，又会回到上面的 onResolve，变为 external: true 了
           return {
             contents:
               `export { default } from "${convertedExternalPrefix}${args.path}";` +
@@ -176,6 +177,7 @@ export function esbuildDepPlugin(
         }
       }
 
+      // 匹配到bare import
       build.onResolve(
         { filter: /^[\w@][^:]/ },
         async ({ path: id, importer, kind }) => {
