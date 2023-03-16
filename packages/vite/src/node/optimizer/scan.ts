@@ -417,6 +417,7 @@ function esbuildScanPlugin(
       // bare imports: record and externalize ----------------------------------
       build.onResolve(
         {
+          // 匹配以字母、数字、下划线或@符号开头，但第二个字符不是冒号(:)的字符串。
           // avoid matching windows volume
           filter: /^[\w@][^:]/,
         },

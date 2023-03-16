@@ -46,6 +46,7 @@ const externalTypes = [
 
 /**
  * 看起来是在依赖打包阶段比较重要的一个插件。。略感复杂
+ * qualified: { [flatId]: src }
  */
 export function esbuildDepPlugin(
   qualified: Record<string, string>,
@@ -91,6 +92,7 @@ export function esbuildDepPlugin(
   }
 
   const resolveResult = (id: string, resolved: string) => {
+    // 什么情况下，依赖会被解析为带有这几个前缀的路径（在 resolveId 的钩子中做了判定，路径重写的）
     if (resolved.startsWith(browserExternalId)) {
       return {
         path: id,
@@ -177,6 +179,7 @@ export function esbuildDepPlugin(
         }
       }
 
+      // 匹配以字母、数字、下划线或@符号开头，但第二个字符不是冒号(:)的字符串。
       // 匹配到bare import
       build.onResolve(
         { filter: /^[\w@][^:]/ },
@@ -188,6 +191,7 @@ export function esbuildDepPlugin(
             }
           }
 
+          // 如果没有importer，那么这应该是一个entry文件；判定一下它是否在scan扫描出来的依赖表中，如果在，返回scan得到的真实路径src属性
           // ensure esbuild uses our resolved entries
           let entry: { path: string } | undefined
           // if this is an entry, return entry namespace resolve result
@@ -196,10 +200,11 @@ export function esbuildDepPlugin(
             // check if this is aliased to an entry - also return entry namespace
             const aliased = await _resolve(id, undefined, true)
             if (aliased && (entry = resolveEntry(aliased))) {
+              // 按正常方式进入打包？
               return entry
             }
           }
-
+          // 普通非entry依赖，会进入到这一步
           // use vite's own resolver
           const resolved = await resolve(id, importer, kind)
           if (resolved) {
