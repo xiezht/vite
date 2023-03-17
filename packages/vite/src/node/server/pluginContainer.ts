@@ -88,6 +88,16 @@ export interface PluginContainerOptions {
   writeFile?: (name: string, source: string | Uint8Array) => void
 }
 
+/**
+ * 应该是模拟了 Rollup 中对插件不同钩子的调度方式。
+ * 比如Rollup插件中，buildStart是一个异步并行钩子，意味着所有插件的 buildStart 是异步、并行执行，完成后再进入下一步
+ * 所以，这里 PluginContainer使用了Promise.all去处理所有插件的buildStart钩子
+ *
+ * 编译过程中，执行到 buildStart时，直接使用 Container的buildStart即可
+ * 异步串行：串行执行，后面的可以使用前面的结果，返回最后一个的执行结果
+ * 异步并行：并行执行，同一返回
+ * 异步优先：串行执行，有值就中断执行提前返回
+ */
 export interface PluginContainer {
   options: InputOptions
   getModuleInfo(id: string): ModuleInfo | null
@@ -136,6 +146,13 @@ type PluginContext = Omit<
 
 export let parser = acorn.Parser
 
+/**
+ * 创建一个PluginContainer，模拟Rollup的开发执行环境（省略了一些打包才需要的实现）、插件执行上下文
+ * @param config
+ * @param moduleGraph 模块依赖图（TO REVIEW）
+ * @param watcher
+ * @returns
+ */
 export async function createPluginContainer(
   config: ResolvedConfig,
   moduleGraph?: ModuleGraph,
@@ -253,6 +270,8 @@ export async function createPluginContainer(
     }
   }
 
+  // 模拟 Rollup 提供的插件上下文，去除了一些打包的（因为只是开发环境用到了）上下文函数。
+  // 插件的钩子函数，都可以通过 this.xxx 来拿到
   // we should create a new context for each async hook pipeline so that the
   // active plugin in that pipeline can be tracked in a concurrency-safe manner.
   // using a class to make creating new contexts more efficient
@@ -569,6 +588,7 @@ export async function createPluginContainer(
     },
 
     /**
+     * 异步优先
      * PluginContainer.resolveId
      * vite默认的pre-alias、alias、preload-polyfill等插件，以及用户定义的包含 resolveId hook的插件，都有可能会影响一个路径的解析。
      * 这里做了一个集中处理
@@ -667,7 +687,7 @@ export async function createPluginContainer(
       }
       return null
     },
-
+    // 异步串行
     async transform(code, id, options) {
       const inMap = options?.inMap
       const ssr = options?.ssr
@@ -707,6 +727,7 @@ export async function createPluginContainer(
               ctx.sourcemapChain.push(result.map)
             }
           }
+          // 更新模块信息（因为只有 result.meta 存在时，才更新模块信息）
           updateModuleInfo(id, result)
         } else {
           code = result
@@ -714,6 +735,7 @@ export async function createPluginContainer(
       }
       return {
         code,
+        // 将不同插件的 transform 钩子执行后返回的 sourcemap 进行合并
         map: ctx._getCombinedSourcemap(),
       }
     },

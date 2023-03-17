@@ -107,6 +107,12 @@ export interface InternalResolveOptions extends Required<ResolveOptions> {
   shouldExternalize?: (id: string) => boolean | undefined
 }
 
+/**
+ * REVIEW
+ * Vite核心路径解析插件，貌似很复杂，先标记一下，后续再review
+ * @param resolveOptions
+ * @returns
+ */
 export function resolvePlugin(resolveOptions: InternalResolveOptions): Plugin {
   const {
     root,

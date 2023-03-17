@@ -25,6 +25,10 @@ import { metadataPlugin } from './metadata'
 import { dynamicImportVarsPlugin } from './dynamicImportVars'
 import { importGlobPlugin } from './importMetaGlob'
 
+/**
+ * 前面先根据用户的插件配置，排好序，得到 pre/normal/post 三种类型的插件
+ * 这里再根据用户的config，插入 Vite 需要内置的插件
+ */
 export async function resolvePlugins(
   config: ResolvedConfig,
   prePlugins: Plugin[],

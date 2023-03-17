@@ -87,6 +87,7 @@ export function htmlInlineProxyPlugin(config: ResolvedConfig): Plugin {
         const index = Number(proxyMatch[1])
         const file = cleanUrl(id)
         const url = file.replace(normalizePath(config.root), '')
+        // 应该是前面插件解析html的script模块的时候，就记录了解析内容到 htmlProxyMap 了吧
         const result = htmlProxyMap.get(config)!.get(url)![index]
         if (result) {
           return result
