@@ -172,7 +172,7 @@ export function importAnalysisPlugin(config: ResolvedConfig): Plugin {
     configureServer(_server) {
       server = _server
     },
-
+    // importer应该是源代码中如何引入该模块的方式吧（比如 import 'lodash-es'，这时候 importer === 'lodash-es'）
     async transform(source, importer, options) {
       // In a real app `server` is always defined, but it is undefined when
       // running src/node/server/__tests__/pluginContainer.spec.ts
